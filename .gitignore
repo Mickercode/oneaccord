@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.turbo/
+
+# Never commit a filled-in environment. .env.example is the template.
+.env
+.env.*
+!.env.example
+
+*.log
+coverage/
+.DS_Store

@@ -1,0 +1,78 @@
+/* One Accord design tokens. Generated from tokens.json. */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,700;0,800;1,700;1,800&family=Archivo:wdth,wght@62..125,400..800&display=swap');
+
+:root {
+  --oa-ink: #141414;
+  --oa-ink-muted: #5c554c;
+  --oa-ground: #ffffff;
+  --oa-surface-muted: #f3f1ee;
+  --oa-surface: #ffffff;
+  --oa-border: #e3dacb;
+  --oa-fire: #e52a2a;
+  --oa-fire-ink: #c81e1e;
+  --oa-on-fire: #ffffff;
+  --oa-gold: #f5c400;
+  --oa-on-gold: #141414;
+  --oa-glow: #f28c28;
+  --oa-city-lagos: #f5c400;
+  --oa-city-abuja: #e52a2a;
+  --oa-status-go: #1e8a4c;
+  --oa-status-check: #f2b33d;
+  --oa-status-stop: #b42328;
+  --oa-font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --oa-font-wide: 'Archivo', system-ui, sans-serif;
+  --oa-font-body: 'Archivo', system-ui, sans-serif;
+  --oa-display-xl-size: 64px;
+  --oa-display-xl-leading: 0.95;
+  --oa-display-xl-weight: 800;
+  --oa-display-lg-size: 40px;
+  --oa-display-lg-leading: 1;
+  --oa-display-lg-weight: 800;
+  --oa-display-md-size: 28px;
+  --oa-display-md-leading: 1.05;
+  --oa-display-md-weight: 700;
+  --oa-strip-size: 18px;
+  --oa-strip-leading: 1.2;
+  --oa-strip-weight: 800;
+  --oa-label-size: 12px;
+  --oa-label-leading: 1.3;
+  --oa-label-weight: 700;
+  --oa-body-size: 16px;
+  --oa-body-leading: 24px;
+  --oa-body-weight: 400;
+  --oa-body-strong-size: 16px;
+  --oa-body-strong-leading: 24px;
+  --oa-body-strong-weight: 600;
+  --oa-small-size: 13px;
+  --oa-small-leading: 18px;
+  --oa-small-weight: 400;
+  --oa-space-1: 4px;
+  --oa-space-2: 8px;
+  --oa-space-3: 16px;
+  --oa-space-4: 24px;
+  --oa-space-5: 40px;
+  --oa-radius-sm: 4px;
+  --oa-radius-md: 10px;
+  --oa-radius-lg: 18px;
+}
+
+/* Night theme: usher, delegate and dashboard screens. Add data-theme="night" to <html> or a container. */
+[data-theme='night'] {
+  --oa-ink: #f7f1e6;
+  --oa-ink-muted: #b8b0a4;
+  --oa-ground: #121212;
+  --oa-surface-muted: #1e1c1a;
+  --oa-surface: #1e1c1a;
+  --oa-border: #33302b;
+  --oa-fire: #ff4d3d;
+  --oa-fire-ink: #ff4d3d;
+  --oa-on-fire: #ffffff;
+  --oa-gold: #f5c400;
+  --oa-on-gold: #141414;
+  --oa-glow: #f28c28;
+  --oa-city-lagos: #f5c400;
+  --oa-city-abuja: #ff4d3d;
+  --oa-status-go: #3fc07a;
+  --oa-status-check: #f2b33d;
+  --oa-status-stop: #e5484d;
+}

@@ -1,0 +1,8 @@
+# One line ending in the repository, whatever anyone checks out on.
+* text=auto eol=lf
+
+# Shell scripts run on Linux in CI; CRLF would break the shebang.
+*.sh text eol=lf
+
+*.png binary
+*.ico binary

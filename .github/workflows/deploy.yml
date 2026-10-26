@@ -1,0 +1,88 @@
+name: Deploy
+
+# The one deploy job. deploy-staging.yml and deploy-production.yml both call
+# it, so the two environments can never drift apart by accident.
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: The GitHub environment to deploy into.
+        required: true
+        type: string
+      service:
+        description: The Railway service name.
+        required: false
+        default: one-accord-api
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Secrets, the URL and any required reviewers all hang off this.
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.API_BASE_URL }}
+
+    # Never let two deploys of the same environment overlap, and never cancel
+    # one half-way: a cancelled deploy can leave migrations half-applied.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the environment is wired up
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::No RAILWAY_TOKEN on the '${{ inputs.environment }}' environment."
+            echo "Add a Railway project token under Settings -> Environments -> ${{ inputs.environment }}."
+            echo "See CONTRIBUTING.md, 'Wiring up a Railway environment'."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install the Railway CLI
+        run: npm install -g @railway/cli@3
+
+      # Railway builds the Dockerfile. The container runs `prisma migrate
+      # deploy` on the way up, so the schema is in step before it serves.
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ inputs.service }}" --ci
+
+      - name: Check it answers
+        if: vars.API_BASE_URL != ''
+        run: |
+          for i in $(seq 1 30); do
+            body=$(curl -fsS "${{ vars.API_BASE_URL }}/health" 2>/dev/null || true)
+            case "$body" in
+              *'"ok":true'*)
+                echo "Healthy: $body"
+                exit 0
+                ;;
+            esac
+            echo "Not ready yet ($i/30)."
+            sleep 10
+          done
+          echo "::error::${{ inputs.environment }} never reported healthy."
+          exit 1
+
+      - name: Say where it went
+        run: |
+          {
+            echo "### Deployed to ${{ inputs.environment }}"
+            echo
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Service: \`${{ inputs.service }}\`"
+            echo "- URL: ${{ vars.API_BASE_URL || 'set API_BASE_URL on this environment' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

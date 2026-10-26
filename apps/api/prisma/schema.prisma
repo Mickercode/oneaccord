@@ -1,0 +1,319 @@
+// One Accord data model. See the PRD section "Data model".
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EventStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  LIVE
+  ENDED
+}
+
+enum PickupKind {
+  CAMPUS
+  AREA
+}
+
+enum TripStatus {
+  SCHEDULED
+  BOARDING
+  DEPARTED
+  ARRIVED
+}
+
+enum RegistrationType {
+  CAMPUS
+  AREA
+  PRIVATE
+  WALK_IN
+}
+
+enum CheckInStage {
+  BOARDED
+  ARRIVED
+}
+
+enum CheckInMethod {
+  DELEGATE_CODE
+  GATE_POSTER
+  BY_NAME
+  TRIP_CONFIRMED
+  WALK_IN
+}
+
+enum TeamRole {
+  SUPER_ADMIN
+  ADMIN
+  DELEGATE
+  USHER
+}
+
+enum MessageAudience {
+  EVENT
+  PICKUP_POINT
+  TRIP
+}
+
+model Event {
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  city         String
+  venue        String
+  address      String?
+  /// The gathering itself, stored in UTC and shown in `timezone`.
+  startsAt     DateTime
+  timezone     String      @default("Africa/Lagos")
+  /// GT-3: the gate poster only checks people in between these two.
+  doorsOpenAt  DateTime
+  doorsCloseAt DateTime
+  cityColor    String      @default("#F5C400")
+  status       EventStatus @default(DRAFT)
+  privacyUrl   String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  pickupPoints  PickupPoint[]
+  zones         Zone[]
+  buses         Bus[]
+  trips         Trip[]
+  gates         Gate[]
+  registrations Registration[]
+  assignments   Assignment[]
+  messages      Message[]
+
+  @@index([status])
+}
+
+model Zone {
+  id       String  @id @default(cuid())
+  eventId  String
+  letter   String
+  name     String
+  color    String
+  capacity Int
+  closed   Boolean @default(false)
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  pickupPoints  PickupPoint[]
+  registrations Registration[]
+  checkIns      CheckIn[]
+
+  @@unique([eventId, letter])
+  @@index([eventId])
+}
+
+model PickupPoint {
+  id        String     @id @default(cuid())
+  eventId   String
+  kind      PickupKind
+  name      String
+  address   String
+  /// EV-2: when the first trip from this point leaves.
+  departsAt DateTime
+  zoneId    String?
+  createdAt DateTime   @default(now())
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  zone          Zone?          @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  trips         Trip[]
+  registrations Registration[]
+  assignments   Assignment[]
+
+  @@unique([eventId, name])
+  @@index([eventId, kind])
+}
+
+model Bus {
+  id       String  @id @default(cuid())
+  eventId  String
+  code     String
+  capacity Int
+  plate    String?
+
+  event Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  trips Trip[]
+
+  @@unique([eventId, code])
+}
+
+/// One run of one bus. Bus 12 running twice gives Trip 12A and Trip 12B. EV-3.
+model Trip {
+  id            String     @id @default(cuid())
+  eventId       String
+  busId         String
+  pickupPointId String
+  code          String
+  capacity      Int
+  departsAt     DateTime
+  status        TripStatus @default(SCHEDULED)
+  delegateId    String?
+  whatsappUrl   String?
+  departedAt    DateTime?
+  arrivedAt     DateTime?
+  createdAt     DateTime   @default(now())
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  bus           Bus            @relation(fields: [busId], references: [id], onDelete: Cascade)
+  pickupPoint   PickupPoint    @relation(fields: [pickupPointId], references: [id], onDelete: Cascade)
+  delegate      TeamMember?    @relation(fields: [delegateId], references: [id], onDelete: SetNull)
+  registrations Registration[]
+  checkIns      CheckIn[]
+
+  @@unique([eventId, code])
+  @@index([pickupPointId, departsAt])
+  @@index([eventId, status])
+}
+
+model Gate {
+  id      String @id @default(cuid())
+  eventId String
+  name    String
+
+  event    Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  checkIns CheckIn[]
+
+  @@unique([eventId, name])
+}
+
+model Registration {
+  id            String           @id @default(cuid())
+  eventId       String
+  fullName      String
+  /// RG-3: one registration per email per event.
+  email         String
+  phone         String?
+  type          RegistrationType
+  pickupPointId String?
+  /// The trip given at registration. The trip actually taken lives on the CheckIn. BD-6.
+  tripId        String?
+  zoneId        String?
+  passCode      String
+  consentData   Boolean          @default(false)
+  consentEmail  Boolean          @default(false)
+  /// Raised to invalidate pass cookies already set on phones.
+  deviceVersion Int              @default(1)
+  unsubscribed  Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  pickupPoint PickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
+  trip        Trip?        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  zone        Zone?        @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  checkIns    CheckIn[]
+  reminders   ReminderLog[]
+
+  @@unique([eventId, email])
+  @@unique([eventId, passCode])
+  @@index([eventId, type])
+  @@index([tripId])
+  @@index([eventId, fullName])
+}
+
+/// One row per person per stage, so a scan repeated five times changes nothing.
+model CheckIn {
+  id             String        @id @default(cuid())
+  registrationId String
+  stage          CheckInStage
+  method         CheckInMethod
+  /// The trip actually taken, which can differ from the one registered for.
+  tripId         String?
+  zoneId         String?
+  gateId         String?
+  confirmedById  String?
+  createdAt      DateTime      @default(now())
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  trip         Trip?        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  zone         Zone?        @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  gate         Gate?        @relation(fields: [gateId], references: [id], onDelete: SetNull)
+  confirmedBy  TeamMember?  @relation(fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@unique([registrationId, stage])
+  @@index([tripId, stage])
+  @@index([zoneId, stage])
+  @@index([createdAt])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  fullName  String
+  role      TeamRole
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  assignments Assignment[]
+  trips       Trip[]
+  checkIns    CheckIn[]
+  magicLinks  MagicLink[]
+  messages    Message[]
+}
+
+/// Where one team member works: a pickup point for delegates, a gate for ushers. EV-5.
+model Assignment {
+  id            String   @id @default(cuid())
+  teamMemberId  String
+  eventId       String
+  pickupPointId String?
+  gateId        String?
+  createdAt     DateTime @default(now())
+
+  teamMember  TeamMember   @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  pickupPoint PickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: Cascade)
+
+  @@unique([teamMemberId, eventId, pickupPointId, gateId])
+  @@index([eventId])
+}
+
+/// PS-4: one row per reminder actually sent, so a retry never mails twice.
+model ReminderLog {
+  id             String   @id @default(cuid())
+  registrationId String
+  kind           String
+  sentAt         DateTime @default(now())
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@unique([registrationId, kind])
+  @@index([sentAt])
+}
+
+model MagicLink {
+  id           String    @id @default(cuid())
+  teamMemberId String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model Message {
+  id          String          @id @default(cuid())
+  eventId     String
+  audience    MessageAudience
+  audienceId  String?
+  subject     String
+  body        String
+  essential   Boolean         @default(false)
+  sentCount   Int             @default(0)
+  createdById String?
+  createdAt   DateTime        @default(now())
+
+  event     Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdBy TeamMember? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
+}

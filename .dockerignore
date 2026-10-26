@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+coverage
+scripts
+docker-compose.yml
+README.md
+CONTRIBUTING.md

@@ -1,0 +1,55 @@
+name: Promote
+
+# Opens the promotion pull request, so a release is always a reviewed diff
+# rather than someone pushing straight at production.
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Which branch to promote into.
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    name: Open the promotion PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TO: ${{ inputs.to }}
+        run: |
+          FROM=main
+          if [ "$TO" = "production" ]; then FROM=staging; fi
+
+          if git diff --quiet "origin/$TO" "origin/$FROM"; then
+            echo "::notice::$TO already matches $FROM. Nothing to promote."
+            exit 0
+          fi
+
+          existing=$(gh pr list --base "$TO" --head "$FROM" --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            echo "::notice::PR #$existing is already open for $FROM -> $TO."
+            exit 0
+          fi
+
+          {
+            echo "Promoting \`$FROM\` into \`$TO\`."
+            echo
+            echo "## What is going out"
+            echo
+            git log --no-merges --pretty='- %s (%h)' "origin/$TO..origin/$FROM"
+          } > body.md
+
+          gh pr create --base "$TO" --head "$FROM" \
+            --title "Promote $FROM to $TO" --body-file body.md

@@ -1,0 +1,32 @@
+# Postgres and Redis for local work. Production uses managed versions of both.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: oneaccord
+    ports:
+      # 55433 on the host, so One Accord never collides with another
+      # project's Postgres on the usual 5432.
+      - '55433:5432'
+    volumes:
+      - oneaccord-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  oneaccord-postgres:
