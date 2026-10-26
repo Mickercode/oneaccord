@@ -27,9 +27,14 @@ hyphens. Where it maps to a PRD requirement, say so: `feat/bd4-code-expiry`.
 
 ### Promoting
 
-Use the **Promote** workflow under Actions, pick `staging` or `production`, and
-it opens the pull request with the commit list in the body. Merging that PR is
-what deploys. Nothing is ever pushed straight at `staging` or `production`.
+Run the **Promote** workflow under Actions and pick `staging` or `production`.
+It lists what would go out and gives you a link that opens the pull request
+with the right base and head. Merging that pull request is what deploys.
+Nothing is ever pushed straight at `staging` or `production`.
+
+The workflow hands you a link rather than opening the PR itself, because
+opening it would mean turning on "Allow GitHub Actions to create and approve
+pull requests" for the whole repository. One click is cheaper than that.
 
 A hotfix still goes through `main`: branch from `main`, PR into `main`, then
 promote twice. It takes two extra clicks and keeps the three branches from
