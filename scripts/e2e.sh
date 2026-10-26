@@ -211,7 +211,16 @@ echo "== 18. Export (DB-4) =="
 csv=$(curl -s -b "$DELEGATE" "$API/events/$EVENT_ID/export")
 check "delegates cannot export" "403" "$(echo "$csv" | j statusCode)"
 admincsv=$(curl -s -b "$ADMIN" "$API/events/$EVENT_ID/export")
-check "admin export has a header row" "yes" "$(echo "$admincsv" | head -1 | grep -q 'Pass code,Full name' && echo yes || echo no)"
+# Read the first line with parameter expansion rather than `| head -1`:
+# head closes the pipe after one line, echo takes SIGPIPE, and on Linux the
+# check reads as a failure even when the header is there.
+header=${admincsv%%$'
+'*}
+case "$header" in
+  *'Pass code,Full name'*) header_ok=yes ;;
+  *) header_ok=no ;;
+esac
+check "admin export has a header row" "yes" "$header_ok"
 check "export has a row per attendee" "yes" "$([ "$(echo "$admincsv" | wc -l)" -gt 380 ] && echo yes || echo no)"
 check "export records the boarded trip" "yes" "$(echo "$admincsv" | grep -q "$PASS_CODE" && echo yes || echo no)"
 
