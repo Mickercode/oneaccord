@@ -1,7 +1,9 @@
 name: Promote
 
-# Opens the promotion pull request, so a release is always a reviewed diff
-# rather than someone pushing straight at production.
+# Works out what a promotion would carry and hands back a one-click link to
+# open the pull request. It deliberately does not open the PR itself: that
+# needs "Allow GitHub Actions to create and approve pull requests" on the
+# whole repository, which is a lot of rope for a convenience.
 on:
   workflow_dispatch:
     inputs:
@@ -13,43 +15,48 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  open-pr:
-    name: Open the promotion PR
+  prepare:
+    name: Prepare the promotion
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Open it
+      - name: Work out what is going out
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TO: ${{ inputs.to }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
         run: |
           FROM=main
           if [ "$TO" = "production" ]; then FROM=staging; fi
 
           if git diff --quiet "origin/$TO" "origin/$FROM"; then
             echo "::notice::$TO already matches $FROM. Nothing to promote."
+            {
+              echo "### Nothing to promote"
+              echo
+              echo "\`$TO\` already matches \`$FROM\`."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          existing=$(gh pr list --base "$TO" --head "$FROM" --state open --json number --jq '.[0].number')
-          if [ -n "$existing" ]; then
-            echo "::notice::PR #$existing is already open for $FROM -> $TO."
-            exit 0
-          fi
+          count=$(git rev-list --count --no-merges "origin/$TO..origin/$FROM")
+          url="$SERVER/$REPO/compare/$TO...$FROM?expand=1&title=Promote+$FROM+to+$TO"
 
           {
-            echo "Promoting \`$FROM\` into \`$TO\`."
+            echo "### Promote \`$FROM\` into \`$TO\`"
             echo
-            echo "## What is going out"
+            echo "**[Open the promotion pull request]($url)**"
             echo
-            git log --no-merges --pretty='- %s (%h)' "origin/$TO..origin/$FROM"
-          } > body.md
+            echo "$count commit(s) would go out:"
+            echo
+            git log --no-merges --pretty='- %s (`%h`)' "origin/$TO..origin/$FROM"
+            echo
+            echo "Merging that pull request is what deploys."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          gh pr create --base "$TO" --head "$FROM" \
-            --title "Promote $FROM to $TO" --body-file body.md
+          echo "::notice::$count commit(s) ready to promote. The run summary has the link."
