@@ -4,7 +4,7 @@ import Redis from 'ioredis';
 import { AppConfig, CONFIG, loadConfig } from './config';
 import { PrismaService } from './prisma.service';
 import { TokensService } from './tokens.service';
-import { CookiesService } from './cookies.service';
+import { SessionsService } from './sessions.service';
 import { TeamGuard } from './team.guard';
 
 export const REDIS = 'REDIS';
@@ -25,9 +25,9 @@ export const REDIS = 'REDIS';
     },
     PrismaService,
     TokensService,
-    CookiesService,
+    SessionsService,
     TeamGuard,
   ],
-  exports: [CONFIG, REDIS, PrismaService, TokensService, CookiesService, TeamGuard, JwtModule],
+  exports: [CONFIG, REDIS, PrismaService, TokensService, SessionsService, TeamGuard, JwtModule],
 })
 export class CommonModule {}

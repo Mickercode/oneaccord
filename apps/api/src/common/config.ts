@@ -13,8 +13,6 @@ export interface AppConfig {
   teamUrl: string;
   adminUrl: string;
   cookieDomain?: string;
-  /** Serve the three built apps from this process. One origin, one deploy. */
-  serveApps: boolean;
   mail: {
     provider: 'resend' | 'postmark' | 'console';
     apiKey?: string;
@@ -35,13 +33,11 @@ export function loadConfig(): AppConfig {
   const port = Number(process.env.PORT ?? 3000);
 
   /**
-   * In production everything is one origin, so PUBLIC_URL is the only address
-   * worth setting and the rest fall out of it. In development each app has its
-   * own Vite port and proxies /api back here.
+   * The three apps deploy on their own, each at the root of its own address,
+   * so each one is named here. They are used for the sign-in redirect, the
+   * links in emails, and the CORS allowlist.
    */
-  const publicUrl = process.env.PUBLIC_URL?.replace(/\/$/, '');
-  const under = (path: string, devPort: number) =>
-    publicUrl ? `${publicUrl}${path}` : dev ? `http://localhost:${devPort}` : undefined;
+  const appUrl = (devPort: number) => (dev ? `http://localhost:${devPort}` : undefined);
 
   return {
     port,
@@ -52,16 +48,11 @@ export function loadConfig(): AppConfig {
     ),
     redisUrl: required('REDIS_URL', dev ? 'redis://127.0.0.1:6379' : undefined),
     secret: required('APP_SECRET', dev ? 'dev-secret-change-me-before-any-real-event' : undefined),
-    apiUrl: required(
-      'API_URL',
-      publicUrl ? `${publicUrl}/api` : dev ? `http://localhost:${port}/api` : undefined,
-    ),
-    webUrl: required('WEB_URL', under('', 5173)),
-    teamUrl: required('TEAM_URL', under('/team', 5174)),
-    adminUrl: required('ADMIN_URL', under('/admin', 5175)),
+    apiUrl: required('API_URL', dev ? `http://localhost:${port}/api` : undefined),
+    webUrl: required('WEB_URL', appUrl(5173)),
+    teamUrl: required('TEAM_URL', appUrl(5174)),
+    adminUrl: required('ADMIN_URL', appUrl(5175)),
     cookieDomain: process.env.COOKIE_DOMAIN,
-    // Off in development, where Vite serves the apps with hot reload.
-    serveApps: process.env.SERVE_APPS ? process.env.SERVE_APPS === 'true' : !dev,
     mail: {
       provider: (process.env.MAIL_PROVIDER as AppConfig['mail']['provider']) ?? 'console',
       apiKey: process.env.MAIL_API_KEY,
