@@ -3,7 +3,7 @@
 # Debian slim rather than Alpine: Prisma's query engine wants glibc and
 # OpenSSL, and musl builds are a recurring source of surprises on a day when
 # the gate is already busy.
-FROM node:20-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable \
