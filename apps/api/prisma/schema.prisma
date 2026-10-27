@@ -274,6 +274,31 @@ model Assignment {
   @@index([eventId])
 }
 
+/// Email waiting to go out.
+///
+/// PS-1 gives us a minute to get the UR Pass to an attendee, which is plenty
+/// of time to write a row and answer them, and far too little to spend holding
+/// the request open while a mail provider thinks about it. The row is written
+/// first and drained by a sweep, so nothing is lost to a restart or to the
+/// provider having a bad five minutes.
+model OutboxEmail {
+  id        String    @id @default(cuid())
+  to        String
+  subject   String
+  html      String
+  text      String
+  /// Raised each time a sweep picks the row up, so a message that always
+  /// fails gives up rather than blocking the ones behind it.
+  attempts  Int       @default(0)
+  /// Backoff: a failed send waits before anyone tries it again.
+  sendAfter DateTime  @default(now())
+  sentAt    DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+
+  @@index([sentAt, sendAfter])
+}
+
 /// PS-4: one row per reminder actually sent, so a retry never mails twice.
 model ReminderLog {
   id             String   @id @default(cuid())

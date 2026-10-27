@@ -31,30 +31,46 @@ check() { # name expected actual
 # Sign a team member in by magic link and return the session token. The link
 # redirects to the app with the session in the URL fragment, which is what an
 # app on another site reads; no cookie is used anywhere in this walk.
-LAST_LINK=""
+#
+# This is called as `X=$(sign_in ...)`, which runs it in a subshell, so it can
+# keep no state between calls. It counts the links already in the log and waits
+# for a new one rather than comparing against a variable the parent never sees.
 sign_in() { # email -> prints the bearer token
-  local email="$1" resp link landing
+  local email="$1" resp before after link landing
+  before=$(grep -c 'auth/callback?token=' "$LOG" 2>/dev/null || true)
+  : "${before:=0}"
+
   resp=$(curl -s -X POST $API/auth/magic-link -H 'content-type: application/json' -d "{\"email\":\"$email\"}")
   if [ "$(echo "$resp" | j statusCode)" = "429" ]; then
-    echo
-    echo "  Rate limited on sign-in, which is the throttle doing its job: five"
-    echo "  magic links per five minutes. The counter is in memory, so restart"
-    echo "  the API and run this again, or wait it out."
-    echo
+    echo >&2
+    echo "  Rate limited on sign-in, which is the throttle doing its job: five" >&2
+    echo "  magic links per five minutes. The counter is in memory, so restart" >&2
+    echo "  the API and run this again, or wait it out." >&2
+    echo >&2
     exit 1
   fi
-  for i in $(seq 1 60); do
-    link=$(grep -o 'http://[^ ]*auth/callback?token=[A-Za-z0-9_-]*' "$LOG" | tail -1)
-    [ -n "$link" ] && [ "$link" != "$LAST_LINK" ] && break
+
+  # The outbox sweep runs every couple of seconds, so wait for the new link.
+  for i in $(seq 1 80); do
+    after=$(grep -c 'auth/callback?token=' "$LOG" 2>/dev/null || true)
+    : "${after:=0}"
+    [ "$after" -gt "$before" ] && break
     sleep 0.25
   done
-  if [ -z "$link" ] || [ "$link" = "$LAST_LINK" ]; then
-    echo "  No sign-in link for $email appeared in $LOG." >&2
+  if [ "${after:-0}" -le "$before" ]; then
+    echo "  No sign-in link for $email reached $LOG." >&2
     exit 1
   fi
-  LAST_LINK="$link"
+
+  link=$(grep -o 'http://[^ ]*auth/callback?token=[A-Za-z0-9_-]*' "$LOG" | tail -1)
   landing=$(curl -s -o /dev/null -w '%{redirect_url}' "$link")
-  printf '%s' "${landing#*#t=}"
+  case "$landing" in
+    *'#t='*) printf '%s' "${landing#*#t=}" ;;
+    *)
+      echo "  Sign-in for $email did not come back with a session: $landing" >&2
+      exit 1
+      ;;
+  esac
 }
 
 # Every authenticated call goes through here, bearer only.
@@ -66,7 +82,9 @@ as() { # token  then curl args
 echo "== 1. Health =="
 h=$(curl -s $ORIGIN/health)
 check "database up" "up" "$(echo "$h" | j database)"
-check "redis up" "up" "$(echo "$h" | j redis)"
+# Mail is queued in Postgres now; a number that only climbs means the
+# provider is refusing and passes are not arriving.
+check "mail queue readable" "yes" "$([ -n "$(echo "$h" | j mailWaiting)" ] && echo yes || echo no)"
 
 echo "== 2. The event the flyer points at =="
 ev=$(curl -s $API/events/lagos-2026/public)

@@ -8,10 +8,10 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
-import type Redis from 'ioredis';
+import { createAdapter } from '@socket.io/postgres-adapter';
+import type { Pool } from 'pg';
 import type { LiveSnapshot } from '@oa/types';
-import { REDIS } from '../common/common.module';
+import { PG_POOL } from '../common/common.module';
 import { AppConfig, CONFIG } from '../common/config';
 import { LiveService } from './live.service';
 
@@ -32,14 +32,15 @@ export class LiveGateway implements OnGatewayInit, OnModuleInit {
 
   constructor(
     private readonly live: LiveService,
-    @Inject(REDIS) private readonly redis: Redis,
+    @Inject(PG_POOL) private readonly pool: Pool,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
   async afterInit(server: Server): Promise<void> {
     // One room spans every API instance, so a check-in on one shows on all.
-    const subscriber = this.redis.duplicate();
-    server.adapter(createAdapter(this.redis, subscriber));
+    // Postgres LISTEN/NOTIFY carries it; the adapter spills anything over the
+    // 8kB notify limit into a table of its own.
+    server.adapter(createAdapter(this.pool));
     this.logger.log('Live gateway ready.');
   }
 

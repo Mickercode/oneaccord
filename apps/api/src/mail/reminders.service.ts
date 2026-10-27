@@ -1,14 +1,10 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
 import { AppConfig, CONFIG } from '../common/config';
 import { PrismaService } from '../common/prisma.service';
 import { MailService } from './mail.service';
 import { reminderEmail, type ReminderKind } from './templates';
 import { MAIL_INCLUDE, passContext } from './pass-context';
-
-export const REMINDER_QUEUE = 'reminders';
 
 const HOUR = 3_600_000;
 const SWEEP_EVERY_MS = 5 * 60_000;
@@ -31,23 +27,18 @@ export class RemindersService implements OnModuleInit {
   private readonly logger = new Logger(RemindersService.name);
 
   constructor(
-    @InjectQueue(REMINDER_QUEUE) private readonly queue: Queue,
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.queue.add(
-      'sweep',
-      {},
-      {
-        repeat: { every: SWEEP_EVERY_MS },
-        jobId: 'reminder-sweep',
-        removeOnComplete: 50,
-        removeOnFail: 50,
-      },
-    );
+  onModuleInit(): void {
+    // A plain interval is enough: the claim row below is what stops two
+    // instances sending the same reminder, not the scheduler.
+    const timer = setInterval(() => {
+      void this.sweep().catch((error) => this.logger.error(`Reminder sweep failed: ${error}`));
+    }, SWEEP_EVERY_MS);
+    timer.unref?.();
   }
 
   async sweep(now = new Date()): Promise<{ sent: number }> {
@@ -124,16 +115,5 @@ export class RemindersService implements OnModuleInit {
     ]);
 
     return [...riders, ...everyoneElse];
-  }
-}
-
-@Processor(REMINDER_QUEUE)
-export class RemindersProcessor extends WorkerHost {
-  constructor(private readonly reminders: RemindersService) {
-    super();
-  }
-
-  async process(): Promise<void> {
-    await this.reminders.sweep();
   }
 }

@@ -3,7 +3,6 @@ export interface AppConfig {
   port: number;
   nodeEnv: string;
   databaseUrl: string;
-  redisUrl: string;
   /** Signs boarding codes, gate tokens, pass cookies and team sessions. */
   secret: string;
   /** Where the API answers. Magic links are built from this. */
@@ -46,7 +45,6 @@ export function loadConfig(): AppConfig {
       'DATABASE_URL',
       dev ? 'postgresql://postgres:postgres@127.0.0.1:55433/oneaccord' : undefined,
     ),
-    redisUrl: required('REDIS_URL', dev ? 'redis://127.0.0.1:6379' : undefined),
     secret: required('APP_SECRET', dev ? 'dev-secret-change-me-before-any-real-event' : undefined),
     apiUrl: required('API_URL', dev ? `http://localhost:${port}/api` : undefined),
     webUrl: required('WEB_URL', appUrl(5173)),
