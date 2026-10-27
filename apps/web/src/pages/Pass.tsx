@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { PassView } from '@oa/types';
@@ -16,7 +16,7 @@ import {
   clock,
   fullDate,
 } from '@oa/ui';
-import { api } from '../api';
+import { api, passSession } from '../api';
 
 /**
  * PS-2: the pass page. Loading it stamps this phone as the attendee's, which
@@ -30,6 +30,13 @@ export function Pass() {
     queryFn: () => api.get<PassView>(`/passes/${code}/view`),
     retry: false,
   });
+
+  // PS-2: opening the pass is what makes this phone recognise the attendee at
+  // check-in. The API sets a cookie too; this covers the case where the API is
+  // on another site and the browser withholds it.
+  useEffect(() => {
+    if (data?.deviceToken) passSession.set(data.deviceToken);
+  }, [data?.deviceToken]);
 
   if (isLoading) {
     return (

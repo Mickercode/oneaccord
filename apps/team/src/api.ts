@@ -1,10 +1,13 @@
-import { createClient } from '@oa/ui';
+import { createClient, createTokenStore } from '@oa/ui';
 import { enqueue, flush } from './offline';
 
 // Same origin as the app itself. Vite proxies it in development.
 const baseUrl = import.meta.env.VITE_API_URL ?? '/api';
 
-export const api = createClient(baseUrl);
+/** The signed-in team member, handed over by the magic link. */
+export const teamSession = createTokenStore('oa.team');
+
+export const api = createClient(baseUrl, { getToken: teamSession.get });
 
 /**
  * A write that must not be lost. Offline it goes to the queue and the screen

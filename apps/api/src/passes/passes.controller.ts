@@ -14,7 +14,7 @@ import type { Request, Response } from 'express';
 import type { PassView } from '@oa/types';
 import { AppConfig, CONFIG } from '../common/config';
 import { PrismaService } from '../common/prisma.service';
-import { CookiesService } from '../common/cookies.service';
+import { SessionsService } from '../common/sessions.service';
 import { normalisePassCode } from '../common/pass-code';
 import { eventSummary, tripSummary, zoneSummary, TRIP_INCLUDE } from '../common/summaries';
 
@@ -23,7 +23,7 @@ import { eventSummary, tripSummary, zoneSummary, TRIP_INCLUDE } from '../common/
 export class PassesController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cookies: CookiesService,
+    private readonly sessions: SessionsService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -35,7 +35,7 @@ export class PassesController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async open(@Param('code') code: string, @Res() res: Response): Promise<void> {
     const { registration } = await this.load(code);
-    this.cookies.setPass(res, {
+    this.sessions.setPass(res, {
       rid: registration.id,
       eid: registration.eventId,
       code: registration.passCode,
@@ -52,22 +52,32 @@ export class PassesController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<PassView> {
     const { registration, view } = await this.load(code);
-    this.cookies.setPass(res, {
+    // Sets the cookie and hands back the same session as a bearer token, so
+    // the app works whether or not it shares a site with this API.
+    const deviceToken = this.sessions.setPass(res, {
       rid: registration.id,
       eid: registration.eventId,
       code: registration.passCode,
       v: registration.deviceVersion,
     });
-    return view;
+    return { ...view, deviceToken };
   }
 
   /** Whoever this phone is carrying, for the check-in page. */
   @Get('me/current')
   async me(@Req() req: Request): Promise<PassView> {
-    const cookie = this.cookies.readPass(req);
-    if (!cookie) throw new UnauthorizedException('This phone is not carrying a UR Pass.');
-    const { view } = await this.load(cookie.code, cookie.eid);
-    return view;
+    const carried = this.sessions.readPass(req);
+    if (!carried) throw new UnauthorizedException('This phone is not carrying a UR Pass.');
+    const { registration, view } = await this.load(carried.code, carried.eid);
+    return {
+      ...view,
+      deviceToken: this.sessions.issuePass({
+        rid: registration.id,
+        eid: registration.eventId,
+        code: registration.passCode,
+        v: registration.deviceVersion,
+      }),
+    };
   }
 
   private async load(rawCode: string, eventId?: string) {
@@ -92,7 +102,9 @@ export class PassesController {
         })
       : 0;
 
-    const view: PassView = {
+    // The device token belongs to the caller: only the endpoints that
+    // issue a session attach one.
+    const view: Omit<PassView, 'deviceToken'> = {
       passCode: registration.passCode,
       fullName: registration.fullName,
       type: registration.type,

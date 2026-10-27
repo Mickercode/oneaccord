@@ -12,7 +12,7 @@ import type { CheckInResult, CheckInStage, ScanContext, ZoneSummary } from '@oa/
 import { AppConfig, CONFIG } from '../common/config';
 import { PrismaService } from '../common/prisma.service';
 import { TokensService } from '../common/tokens.service';
-import type { PassCookie } from '../common/cookies.service';
+import type { PassSession } from '../common/sessions.service';
 import { normalisePassCode } from '../common/pass-code';
 import { eventSummary, tripSummary, zoneSummary, TRIP_INCLUDE } from '../common/summaries';
 import { LiveService } from '../live/live.service';
@@ -39,7 +39,7 @@ export class CheckInsService {
    * What the check-in page needs to ask its one question: which trip or gate
    * this code belongs to, and who this phone is carrying. BD-2.
    */
-  async context(token: string, cookie: PassCookie | null): Promise<ScanContext> {
+  async context(token: string, cookie: PassSession | null): Promise<ScanContext> {
     const payload = this.tokens.verify(token);
 
     if (payload === 'BAD_TOKEN' || payload === 'EXPIRED') {
@@ -101,7 +101,7 @@ export class CheckInsService {
   }
 
   /** BD-2, BD-3, BD-6, BD-7. */
-  async boarding(dto: ScanDto, cookie: PassCookie | null): Promise<CheckInResult> {
+  async boarding(dto: ScanDto, cookie: PassSession | null): Promise<CheckInResult> {
     const payload = this.tokens.verify(dto.token);
     if (payload === 'EXPIRED') {
       // BD-4: a screenshot shared in a group chat is worth nothing.
@@ -175,7 +175,7 @@ export class CheckInsService {
   }
 
   /** GT-2 and GT-3: the printed poster in the security queue. */
-  async gate(dto: ScanDto, cookie: PassCookie | null): Promise<CheckInResult> {
+  async gate(dto: ScanDto, cookie: PassSession | null): Promise<CheckInResult> {
     const payload = this.tokens.verify(dto.token);
     if (payload === 'BAD_TOKEN' || payload === 'EXPIRED' || payload.kind !== 'g') {
       throw new BadRequestException('We cannot read that code.');
@@ -428,7 +428,7 @@ export class CheckInsService {
   }
 
   /** BD-2 and BD-3: the phone that remembers them, or the pass code they type. */
-  private async identify(eventId: string, dto: ScanDto, cookie: PassCookie | null) {
+  private async identify(eventId: string, dto: ScanDto, cookie: PassSession | null) {
     // A typed pass code wins over the phone's cookie: on a borrowed phone it
     // is the only way the right person gets checked in.
     if (dto.passCode) {
@@ -461,7 +461,7 @@ export class CheckInsService {
   }
 
   private async attendeeFromCookie(
-    cookie: PassCookie | null,
+    cookie: PassSession | null,
     eventId: string,
     tripId: string | null,
   ): Promise<ScanContext['attendee']> {

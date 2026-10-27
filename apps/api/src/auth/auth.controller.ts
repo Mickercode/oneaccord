@@ -14,7 +14,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { IsEmail } from 'class-validator';
 import type { Request, Response } from 'express';
 import type { TeamSession } from '@oa/types';
-import { CookiesService } from '../common/cookies.service';
+import { SessionsService } from '../common/sessions.service';
 import { Team, TeamGuard, type TeamPrincipal } from '../common/team.guard';
 import { AuthService } from './auth.service';
 
@@ -28,7 +28,7 @@ class MagicLinkDto {
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
-    private readonly cookies: CookiesService,
+    private readonly sessions: SessionsService,
   ) {}
 
   @Post('magic-link')
@@ -46,8 +46,11 @@ export class AuthController {
       res.redirect(`${this.auth.homeFor('DELEGATE')}/sign-in?error=expired`);
       return;
     }
-    this.cookies.setTeam(res, { sub: redeemed.memberId, role: redeemed.role });
-    res.redirect(this.auth.homeFor(redeemed.role));
+    const session = this.sessions.setTeam(res, { sub: redeemed.memberId, role: redeemed.role });
+    // The cookie covers the same-site case. The fragment covers the other one:
+    // fragments never reach a server, so the token stays out of access logs
+    // and out of the referrer header.
+    res.redirect(`${this.auth.homeFor(redeemed.role)}/#t=${encodeURIComponent(session)}`);
   }
 
   @Get('me')
@@ -60,7 +63,7 @@ export class AuthController {
 
   @Post('sign-out')
   signOut(@Req() _req: Request, @Res({ passthrough: true }) res: Response) {
-    this.cookies.clearTeam(res);
+    this.sessions.clearTeam(res);
     return { signedOut: true };
   }
 }

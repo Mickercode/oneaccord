@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import type { EventSummary, TeamSession } from '@oa/types';
 import { CityTab, DateStrip, Logo } from '@oa/ui';
-import { api } from './api';
+import { api, teamSession } from './api';
 
 /** The dashboard frame: bold top, calm rows below. */
 export function AdminShell({
@@ -38,6 +38,7 @@ export function AdminShell({
               className="oa-label min-h-[44px] underline"
               onClick={async () => {
                 await api.post('/auth/sign-out').catch(() => undefined);
+                teamSession.clear();
                 navigate('/sign-in');
                 window.location.reload();
               }}

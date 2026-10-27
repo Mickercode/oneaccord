@@ -16,17 +16,33 @@ export interface ApiOptions {
   signal?: AbortSignal;
 }
 
-export function createClient(baseUrl: string) {
+export interface ClientOptions {
+  /**
+   * The session to send as a bearer token. The API also accepts its own
+   * cookie, so this is only needed when the app and the API are on different
+   * sites and the browser withholds it.
+   */
+  getToken?: () => string | null;
+}
+
+export function createClient(baseUrl: string, options: ClientOptions = {}) {
   const base = baseUrl.replace(/\/$/, '');
 
-  async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  async function send<T>(path: string, request: ApiOptions = {}): Promise<T> {
+    const headers: Record<string, string> = {};
+    if (request.body) headers['content-type'] = 'application/json';
+
+    const token = options.getToken?.();
+    if (token) headers.authorization = `Bearer ${token}`;
+
     const response = await fetch(`${base}${path}`, {
-      method: options.method ?? 'GET',
-      // The UR Pass cookie and the team session both ride on this.
+      method: request.method ?? 'GET',
+      // Carries the cookie when the app and the API share a site. When they
+      // do not, the bearer token above does the same job.
       credentials: 'include',
-      headers: options.body ? { 'content-type': 'application/json' } : undefined,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      body: request.body ? JSON.stringify(request.body) : undefined,
+      signal: request.signal,
     });
 
     if (response.status === 204) return undefined as T;
@@ -51,9 +67,9 @@ export function createClient(baseUrl: string) {
 
   return {
     base,
-    get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
-    post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
-    patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
+    get: <T>(path: string, signal?: AbortSignal) => send<T>(path, { signal }),
+    post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
+    patch: <T>(path: string, body?: unknown) => send<T>(path, { method: 'PATCH', body }),
   };
 }
 

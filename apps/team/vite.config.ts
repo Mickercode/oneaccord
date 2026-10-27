@@ -9,8 +9,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 const API = process.env.API_PROXY ?? 'http://127.0.0.1:3000';
 
 export default defineConfig({
-  // Served under /team on the one origin.
-  base: '/team/',
   plugins: [
     react(),
     VitePWA({
@@ -24,11 +22,11 @@ export default defineConfig({
         background_color: '#121212',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/team/',
-        start_url: '/team/',
+        scope: '/',
+        start_url: '/',
         icons: [
-          { src: '/team/oneaccord-app-icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/team/oneaccord-app-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
+          { src: '/oneaccord-app-icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/oneaccord-app-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
         ],
       },
       workbox: {

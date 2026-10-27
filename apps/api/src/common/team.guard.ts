@@ -10,7 +10,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import type { TeamRole } from '@oa/types';
-import { CookiesService } from './cookies.service';
+import { SessionsService } from './sessions.service';
 import { PrismaService } from './prisma.service';
 
 export interface TeamPrincipal {
@@ -37,14 +37,14 @@ export const Team = createParamDecorator(
 @Injectable()
 export class TeamGuard implements CanActivate {
   constructor(
-    private readonly cookies: CookiesService,
+    private readonly sessions: SessionsService,
     private readonly prisma: PrismaService,
     private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request & { team?: TeamPrincipal }>();
-    const session = this.cookies.readTeam(request);
+    const session = this.sessions.readTeam(request);
     if (!session) throw new UnauthorizedException('Please sign in again.');
 
     const member = await this.prisma.teamMember.findUnique({

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import type { TeamSession } from '@oa/types';
 import { Logo } from '@oa/ui';
-import { api, sendQueued } from './api';
+import { api, sendQueued, teamSession } from './api';
 import { useOfflineQueue } from './offline';
 
 const post = (path: string, body?: unknown) => api.post(path, body);
@@ -53,6 +53,7 @@ export function TeamShell({
             onClick={async () => {
               await sendQueued().catch(() => undefined);
               await api.post('/auth/sign-out').catch(() => undefined);
+              teamSession.clear();
               navigate('/sign-in');
               window.location.reload();
             }}
