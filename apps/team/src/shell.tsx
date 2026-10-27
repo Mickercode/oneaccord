@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import type { TeamSession } from '@oa/types';
+import { Logo } from '@oa/ui';
 import { api, sendQueued } from './api';
 import { useOfflineQueue } from './offline';
 
@@ -26,9 +27,12 @@ export function TeamShell({
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[640px] flex-col px-oa-3 py-oa-3">
       <header className="mb-oa-3 flex items-center justify-between gap-oa-2">
-        <div>
-          <p className="oa-label">One Accord</p>
-          <h1 className="oa-display text-[28px] leading-none">{title}</h1>
+        <div className="flex items-center gap-oa-2">
+          <Logo variant="mark" width={36} />
+          <div>
+            <p className="oa-label">One Accord</p>
+            <h1 className="oa-display text-[28px] leading-none">{title}</h1>
+          </div>
         </div>
         <div className="flex items-center gap-oa-2">
           {!online || pending > 0 ? (

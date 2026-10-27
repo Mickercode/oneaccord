@@ -1,6 +1,16 @@
 /* The design system's tokens, then Tailwind on top of them. */
 @import '../../../one-accord-design-system/tokens/tokens.css';
 
+/* The logo's tagline: muted on Day, gold on Night. Everything else in the
+   lockup takes --oa-ink and the flame keeps its own colours. */
+:root {
+  --oa-logo-tagline: var(--oa-ink-muted);
+}
+
+[data-theme='night'] {
+  --oa-logo-tagline: var(--oa-gold);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
