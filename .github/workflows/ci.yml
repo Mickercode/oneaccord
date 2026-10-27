@@ -62,19 +62,10 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
 
     env:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/oneaccord
-      REDIS_URL: redis://localhost:6379
       # Only ever signs tokens inside this job. The real one lives in Railway.
       APP_SECRET: ci-secret-not-used-anywhere-real
       API_URL: http://127.0.0.1:3000/api

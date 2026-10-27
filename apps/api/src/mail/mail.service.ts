@@ -1,63 +1,147 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../common/config';
+import { PrismaService } from '../common/prisma.service';
 import { RenderedEmail } from './templates';
 
-export const MAIL_QUEUE = 'mail';
+/** How often the sweep looks for mail to send. */
+const SWEEP_EVERY_MS = 2_000;
+/** Taken per sweep. The provider, not us, is the bottleneck here. */
+const BATCH = 25;
+/** Sent at once within a batch. */
+const CONCURRENCY = 10;
+/** After this many tries a message is left alone for someone to look at. */
+const MAX_ATTEMPTS = 5;
 
-export interface MailJob {
+interface OutboxRow {
+  id: string;
   to: string;
   subject: string;
   html: string;
   text: string;
+  attempts: number;
 }
 
+/**
+ * Outgoing email, queued in Postgres.
+ *
+ * Registration writes a row and answers the attendee; a sweep drains it. That
+ * keeps the registration rush off the mail provider's latency, and it means a
+ * restart mid-send loses nothing — the row is still there, unsent.
+ *
+ * The claim is `FOR UPDATE SKIP LOCKED`, so any number of instances can sweep
+ * the same table at once without two of them sending the same message.
+ */
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
   private readonly logger = new Logger(MailService.name);
+  private sweeping = false;
 
   constructor(
-    @InjectQueue(MAIL_QUEUE) private readonly queue: Queue<MailJob>,
+    private readonly prisma: PrismaService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
-  /**
-   * PS-1 asks for the pass within a minute, so registration hands the mail to
-   * the queue and answers the attendee straight away.
-   */
+  onModuleInit(): void {
+    const timer = setInterval(() => {
+      void this.sweep().catch((error) => this.logger.error(`Mail sweep failed: ${error}`));
+    }, SWEEP_EVERY_MS);
+    // Never hold the process open on this alone.
+    timer.unref?.();
+  }
+
+  /** PS-1: hand the pass to the outbox and answer the attendee. */
   async enqueue(to: string, email: RenderedEmail): Promise<void> {
-    await this.queue.add(
-      'send',
-      { to, subject: email.subject, html: email.html, text: email.text },
-      {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 2_000 },
-        removeOnComplete: 1_000,
-        removeOnFail: 5_000,
-      },
-    );
+    await this.prisma.outboxEmail.create({
+      data: { to, subject: email.subject, html: email.html, text: email.text },
+    });
   }
 
   async enqueueMany(messages: Array<{ to: string; email: RenderedEmail }>): Promise<number> {
     if (messages.length === 0) return 0;
-    await this.queue.addBulk(
-      messages.map(({ to, email }) => ({
-        name: 'send',
-        data: { to, subject: email.subject, html: email.html, text: email.text },
-        opts: {
-          attempts: 5,
-          backoff: { type: 'exponential' as const, delay: 2_000 },
-          removeOnComplete: 1_000,
-          removeOnFail: 5_000,
-        },
+    const written = await this.prisma.outboxEmail.createMany({
+      data: messages.map(({ to, email }) => ({
+        to,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
       })),
-    );
-    return messages.length;
+    });
+    return written.count;
   }
 
-  /** Called by the queue worker. Throws so BullMQ can retry. */
-  async deliver(job: MailJob): Promise<void> {
+  /**
+   * Claim a batch and send it. Claiming raises `attempts` in the same
+   * statement that selects the rows, so a crash between claiming and sending
+   * costs one attempt rather than looping for ever.
+   */
+  async sweep(): Promise<{ sent: number; failed: number }> {
+    if (this.sweeping) return { sent: 0, failed: 0 };
+    this.sweeping = true;
+    try {
+      const claimed = await this.prisma.$queryRaw<OutboxRow[]>`
+        UPDATE "OutboxEmail"
+        SET attempts = attempts + 1
+        WHERE id IN (
+          SELECT id FROM "OutboxEmail"
+          WHERE "sentAt" IS NULL
+            AND "sendAfter" <= now()
+            AND attempts < ${MAX_ATTEMPTS}
+          ORDER BY "createdAt"
+          LIMIT ${BATCH}
+          FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, "to", subject, html, text, attempts
+      `;
+      if (claimed.length === 0) return { sent: 0, failed: 0 };
+
+      let sent = 0;
+      let failed = 0;
+
+      for (let i = 0; i < claimed.length; i += CONCURRENCY) {
+        const slice = claimed.slice(i, i + CONCURRENCY);
+        const results = await Promise.allSettled(slice.map((row) => this.deliver(row)));
+
+        await Promise.all(
+          results.map((result, index) => {
+            const row = slice[index];
+            if (result.status === 'fulfilled') {
+              sent += 1;
+              return this.prisma.outboxEmail.update({
+                where: { id: row.id },
+                data: { sentAt: new Date(), lastError: null },
+              });
+            }
+            failed += 1;
+            const reason = String(result.reason).slice(0, 500);
+            // Back off further each time: 4s, 8s, 16s, 32s.
+            const wait = 2_000 * 2 ** row.attempts;
+            if (row.attempts >= MAX_ATTEMPTS) {
+              this.logger.error(`Giving up on mail to ${row.to} after ${row.attempts}: ${reason}`);
+            }
+            return this.prisma.outboxEmail.update({
+              where: { id: row.id },
+              data: { lastError: reason, sendAfter: new Date(Date.now() + wait) },
+            });
+          }),
+        );
+      }
+
+      if (failed > 0) this.logger.warn(`Mail sweep: ${sent} sent, ${failed} to retry.`);
+      return { sent, failed };
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  /** How many are still waiting, for the health check. */
+  async pending(): Promise<number> {
+    return this.prisma.outboxEmail.count({
+      where: { sentAt: null, attempts: { lt: MAX_ATTEMPTS } },
+    });
+  }
+
+  /** Throws, so the sweep knows to retry. */
+  private async deliver(job: { to: string; subject: string; html: string; text: string }) {
     const { provider, apiKey, from, replyTo } = this.config.mail;
 
     if (provider === 'console' || !apiKey) {
