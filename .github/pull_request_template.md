@@ -13,5 +13,5 @@
 
 ## Anything to do at deploy time
 
-<!-- New environment variables, a migration that needs care, a Railway setting.
+<!-- New environment variables, a migration that needs care, a Render setting.
      Say "nothing" if there is nothing. -->

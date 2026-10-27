@@ -17,7 +17,7 @@ Not an official Upper Room asset._
 | `apps/api`          | NestJS API, Prisma, BullMQ, the Socket.IO gateway. Every endpoint in the PRD.      |
 | `packages/types`    | The contract. This repo owns it; the apps repo keeps a synced copy.                |
 | `scripts/e2e.sh`    | A walk through the whole flow against a running API, from the flyer to the export. |
-| `Dockerfile`        | What Railway runs.                                                                 |
+| `Dockerfile`        | What Render runs.                                                                  |
 | `.github/workflows` | CI on every pull request, deploys from `staging` and `production`.                 |
 
 ## Running it
@@ -165,10 +165,10 @@ cookie is not, so cross-site scripting now reaches a session. Team sessions last
 
 ## Branches and deploys
 
-`main` is the integration branch; `staging` and `production` deploy to Railway
+`main` is the integration branch; `staging` and `production` deploy to Render
 when something is merged into them. Feature branches pull-request into `main`,
 and the **Promote** workflow opens the promotion PRs. The whole arrangement,
-including how to wire up a Railway environment, is in
+including how to wire up a Render environment, is in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Give the service `DATABASE_URL`, `REDIS_URL`, `APP_SECRET`, the three app

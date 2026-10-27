@@ -95,56 +95,77 @@ runs `prisma migrate deploy` as it starts, so merging the PR is what applies it.
 Write migrations that an older instance can survive for a minute or two: add a
 column before you read it, and drop one in a later release, not the same one.
 
-## Wiring up a Railway environment
+## Wiring up a Render environment
 
 Once per environment, for `staging` and again for `production`.
 
-1. In Railway, create a project with a **Postgres** plugin, a **Redis** plugin
-   and an empty service named `one-accord-api`. Point the service at this repo;
-   it will pick up the `Dockerfile` and `railway.json`. One service serves the
-   API and all three apps.
-2. Set the service's variables:
+1. **Create the Postgres first.** New -> PostgreSQL, in the region you will
+   use. The container runs `prisma migrate deploy` before it serves, so with
+   no reachable database it crash-loops rather than starting empty.
 
-   | Variable                           | Value                                      |
-   | ---------------------------------- | ------------------------------------------ |
-   | `NODE_ENV`                         | `production`                               |
-   | `DATABASE_URL`                     | `${{Postgres.DATABASE_URL}}`               |
-   | `REDIS_URL`                        | `${{Redis.REDIS_URL}}`                     |
-   | `APP_SECRET`                       | 32 random bytes, different per environment |
-   | `WEB_URL`, `TEAM_URL`, `ADMIN_URL` | the three Vercel addresses                 |
-   | `MAIL_PROVIDER`                    | `resend` or `postmark`                     |
-   | `MAIL_API_KEY`, `MAIL_FROM`        | from the mail provider                     |
+   Pick the region deliberately: it cannot be changed later without recreating
+   the service, and the database must share it. Frankfurt is the usual choice
+   for a Lagos crowd, because West African subsea cables run north to Europe
+   and a European region often beats a South African one. Measure before a city.
+
+2. **Create the web service** from this repo, Docker runtime, root directory
+   empty, branch `staging` or `production`. Not the free instance: it spins
+   down when idle, which stops the mail outbox and the reminder sweep, so
+   passes stop sending.
+
+3. **Set Auto-Deploy to No.** The workflow drives deploys instead, so nothing
+   ships until CI is green and a merge into `production` still waits for the
+   approval on the GitHub environment. Render's own auto-deploy would bypass
+   both.
+
+4. **Set the service's variables:**
+
+   | Variable                           | Value                                               |
+   | ---------------------------------- | --------------------------------------------------- |
+   | `NODE_ENV`                         | `production`                                        |
+   | `DATABASE_URL`                     | the **Internal** Database URL, not the External one |
+   | `APP_SECRET`                       | 32 random bytes, different per environment          |
+   | `API_URL`                          | the service's own address, ending `/api`            |
+   | `WEB_URL`, `TEAM_URL`, `ADMIN_URL` | the three Vercel addresses                          |
+   | `MAIL_PROVIDER`                    | `resend` or `postmark`                              |
+   | `MAIL_API_KEY`, `MAIL_FROM`        | from the mail provider                              |
 
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    ```
 
-   The three app addresses are used for the sign-in redirect, the links in
-   emails, and the CORS allowlist. Because the apps are on another site, the UR
-   Pass cookie cannot reach this API and the apps carry a bearer token instead.
-   Put everything on one registrable domain and set `COOKIE_DOMAIN`, and the
-   cookie takes over again.
+   There is no `REDIS_URL` and no `PORT`: nothing reads the first, and Render
+   sets the second.
 
-3. In Railway, create a **project token** for that environment.
-4. In GitHub, under **Settings → Environments**, make an environment with the
+5. **Copy the Deploy Hook** from the service's settings.
+
+6. In GitHub, under **Settings -> Environments**, make an environment with the
    matching name and add:
-   - secret `RAILWAY_TOKEN` — the project token from step 3
-   - variable `API_BASE_URL` — the service's public URL, used for the smoke test
-     and shown on the deployment
-5. On `production`, add yourself under **Required reviewers**. That is the
+   - secret `RENDER_DEPLOY_HOOK` — the hook from step 5
+   - variable `API_BASE_URL` — the service's address, no trailing slash
+
+7. On `production`, add yourself under **Required reviewers**. That is the
    manual gate: a merge into `production` then waits for an approval before it
    deploys.
 
-`APP_SECRET` signs boarding codes, gate tokens, UR Pass cookies and team
-sessions. Changing it signs everyone out and invalidates every pass cookie, so
-treat it as a release, not a tweak.
+`APP_SECRET` signs boarding codes, gate tokens, UR Pass sessions and team
+sessions. Changing it signs everyone out and invalidates every pass already on
+a phone, so treat it as a release, not a tweak.
+
+### How a deploy proves itself
+
+`/health` reports the commit it is running, from `RENDER_GIT_COMMIT`. The
+workflow asks Render for a deploy and then waits until the service answers
+with that exact commit and `"ok":true`. Asking for a deploy and getting one
+are different things, and a green tick that only means "the request was
+accepted" is worse than no tick at all.
 
 ## What CI checks
 
-| Job     | What it does                                                                                                                                   |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check` | Prettier, TypeScript across both packages, 33 unit tests.                                                                                      |
-| `e2e`   | Starts Postgres, Redis and the API, seeds a city, then walks 42 assertions from registration to the CSV export.                                |
-| `image` | Builds the Dockerfile, which is what Railway runs. On `main`, `staging` and `production` it publishes to `ghcr.io/truvoid-tech/one-accord-be`. |
+| Job     | What it does                                                                                                                            |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `check` | Prettier, TypeScript across both packages, 33 unit tests.                                                                               |
+| `e2e`   | Starts Postgres, Redis and the API, seeds a city, then walks 42 assertions from registration to the CSV export.                         |
+| `image` | Builds the Dockerfile, which is what Render runs. On `main`, `staging` and `production` it publishes to `ghcr.io/mickercode/oneaccord`. |
 
 All three must pass before a pull request can merge.
