@@ -58,16 +58,7 @@ pnpm dev
 | Dashboard    | http://localhost:5175     | `admin@oneaccord.example`                           |
 | API          | http://localhost:3000/api | docs at `/api/docs`                                 |
 
-Each app proxies `/api` and `/socket.io` to the API, so nothing is
-cross-origin in development either — the same shape as production.
-
-To try the production arrangement, where one process serves everything:
-
-```bash
-pnpm build
-SERVE_APPS=true PUBLIC_URL=http://127.0.0.1:3000 node apps/api/dist/main.js
-# attendee / · team /team · dashboard /admin · API /api · health /health
-```
+The apps live in their own repository and proxy `/api` here while you work.
 
 Before you open a pull request:
 
@@ -114,24 +105,25 @@ Once per environment, for `staging` and again for `production`.
    API and all three apps.
 2. Set the service's variables:
 
-   | Variable                    | Value                                           |
-   | --------------------------- | ----------------------------------------------- |
-   | `NODE_ENV`                  | `production`                                    |
-   | `DATABASE_URL`              | `${{Postgres.DATABASE_URL}}`                    |
-   | `REDIS_URL`                 | `${{Redis.REDIS_URL}}`                          |
-   | `APP_SECRET`                | 32 random bytes, different per environment      |
-   | `PUBLIC_URL`                | the service's public address, no trailing slash |
-   | `MAIL_PROVIDER`             | `resend` or `postmark`                          |
-   | `MAIL_API_KEY`, `MAIL_FROM` | from the mail provider                          |
+   | Variable                           | Value                                      |
+   | ---------------------------------- | ------------------------------------------ |
+   | `NODE_ENV`                         | `production`                               |
+   | `DATABASE_URL`                     | `${{Postgres.DATABASE_URL}}`               |
+   | `REDIS_URL`                        | `${{Redis.REDIS_URL}}`                     |
+   | `APP_SECRET`                       | 32 random bytes, different per environment |
+   | `WEB_URL`, `TEAM_URL`, `ADMIN_URL` | the three Vercel addresses                 |
+   | `MAIL_PROVIDER`                    | `resend` or `postmark`                     |
+   | `MAIL_API_KEY`, `MAIL_FROM`        | from the mail provider                     |
 
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    ```
 
-   `PUBLIC_URL` is the only address to set: the attendee app, the team app, the
-   dashboard and the API all come off it. It is also why there is no
-   `COOKIE_DOMAIN` and no CORS allowance to maintain — the UR Pass cookie never
-   leaves its own site.
+   The three app addresses are used for the sign-in redirect, the links in
+   emails, and the CORS allowlist. Because the apps are on another site, the UR
+   Pass cookie cannot reach this API and the apps carry a bearer token instead.
+   Put everything on one registrable domain and set `COOKIE_DOMAIN`, and the
+   cookie takes over again.
 
 3. In Railway, create a **project token** for that environment.
 4. In GitHub, under **Settings → Environments**, make an environment with the
