@@ -27,6 +27,10 @@ export class HealthController {
       // Mail waiting to go out. A number that climbs and never falls means
       // the provider is refusing and the passes are not arriving.
       mailWaiting: outbox.status === 'fulfilled' ? outbox.value : null,
+      // Which commit is actually serving. Render sets RENDER_GIT_COMMIT; the
+      // deploy workflow polls this to know its deploy has really landed
+      // rather than trusting that asking for one was enough.
+      commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_SHA ?? 'unknown',
       at: new Date().toISOString(),
     };
   }
