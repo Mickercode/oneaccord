@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import type { EventSummary, TeamSession } from '@oa/types';
-import { CityTab, DateStrip } from '@oa/ui';
+import { CityTab, DateStrip, Logo } from '@oa/ui';
 import { api } from './api';
 
 /** The dashboard frame: bold top, calm rows below. */
@@ -26,8 +26,8 @@ export function AdminShell({
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1100px] flex-col px-oa-3 py-oa-4">
       <header className="mb-oa-4">
         <div className="mb-oa-2 flex flex-wrap items-center justify-between gap-oa-2">
-          <NavLink to="/" className="oa-label">
-            One Accord
+          <NavLink to="/" aria-label="One Accord, back to the gatherings">
+            <Logo width={150} />
           </NavLink>
           <div className="flex items-center gap-oa-3">
             <span className="text-[13px] text-oa-ink-muted">

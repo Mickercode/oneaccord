@@ -5,6 +5,7 @@ import type {
   SelectHTMLAttributes,
 } from 'react';
 import { clock, dayMonth, monthYear } from './format';
+import { Logo } from './logo';
 
 function join(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ');
@@ -274,7 +275,7 @@ export function PageShell({
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[560px] flex-col px-oa-3 py-oa-4">
       <header className="mb-oa-4 flex items-center justify-between gap-oa-3">
-        <span className="oa-display text-[28px] leading-none">One Accord</span>
+        <Logo width={150} />
         {city && cityColor ? <CityTab city={city} color={cityColor} /> : null}
       </header>
       <main className="flex-1">{children}</main>

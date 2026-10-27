@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Banner, Button, Field } from '@oa/ui';
+import { Banner, Button, Field, Logo } from '@oa/ui';
 import { api } from '../api';
 
 /** EV-5: no passwords. A link to the address the team was invited on. */
@@ -16,7 +16,7 @@ export function SignIn() {
 
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col justify-center px-oa-3 py-oa-4">
-      <p className="oa-label">One Accord</p>
+      <Logo width={180} className="mb-oa-4" />
       <h1 className="oa-display mb-oa-3 text-[40px] leading-none">Sign in</h1>
 
       {expired ? (
