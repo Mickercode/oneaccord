@@ -1,0 +1,70 @@
+# One Accord on Render, as a Blueprint.
+#
+#   Render dashboard -> Blueprints -> New Blueprint Instance -> pick this repo
+#
+# It creates the API and a Postgres database, wires the connection string
+# between them, and generates APP_SECRET. There is no Redis to run: the mail
+# queue is a table, and Socket.IO reaches other instances over LISTEN/NOTIFY. The
+# handful of values Render cannot know — the app addresses and the mail
+# credentials — are marked `sync: false` and set once in the dashboard.
+#
+# Everything sits in one region. The database and the service must share one,
+# or the internal connection string will not resolve. Frankfurt is the usual
+# choice for a Lagos crowd: West African subsea cables run north to Europe, so
+# a European region often beats a South African one. Measure it before a city.
+
+databases:
+  - name: oneaccord-postgres
+    databaseName: oneaccord
+    user: oneaccord
+    region: frankfurt
+    # Free databases are deleted after a trial period, which is fine for a
+    # throwaway but not for staging. Check the current plans before a pilot.
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: oneaccord-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: frankfurt
+    plan: starter
+    # The container runs `prisma migrate deploy` before it serves, so a deploy
+    # applies any new migration on the way up.
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # The internal connection string: private network, no egress charge.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: oneaccord-postgres
+          property: connectionString
+
+      # Signs boarding codes, gate tokens, UR Pass sessions and team sessions.
+      # Render generates it once. Changing it later signs everyone out and
+      # invalidates every pass already on a phone, so treat it as a release.
+      - key: APP_SECRET
+        generateValue: true
+
+      # The three Vercel addresses. Used for the sign-in redirect, the links
+      # in emails, and the CORS allowlist — the team apps cannot sign in until
+      # these are right.
+      - key: WEB_URL
+        sync: false
+      - key: TEAM_URL
+        sync: false
+      - key: ADMIN_URL
+        sync: false
+
+      # This service's own public address, so magic links point back here.
+      - key: API_URL
+        sync: false
+
+      - key: MAIL_PROVIDER
+        value: resend
+      - key: MAIL_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

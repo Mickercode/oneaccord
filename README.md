@@ -1,26 +1,24 @@
 # One Accord
 
-Registration and check-in for Upper Room, built to the One Accord PRD. Attendees
-scan our codes with their own phones, so a city is accounted for without buying a
-single scanner.
+The API behind One Accord: registration and check-in for Upper Room, built to
+the One Accord PRD. Attendees scan our codes with their own phones, so a city is
+accounted for without buying a single scanner.
+
+The three apps that attendees and the team actually touch live in their own
+repository and talk to this one over HTTP.
 
 _Concept, prepared to pitch to the Upper Room team at Dunsin Oyekan Ministries.
 Not an official Upper Room asset._
 
 ## What is here
 
-| Path                       | What it is                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------------- |
-| `apps/api`                 | NestJS API, Prisma, BullMQ, the Socket.IO gateway. Every endpoint in the PRD.           |
-| `apps/web`                 | The attendee app, Day theme: register, UR Pass, boarding scan, gate scan, walk-in lane. |
-| `apps/team`                | Delegates and ushers, Night theme, installable, works with no signal.                   |
-| `apps/admin`               | Setup and the live dashboard, Night theme.                                              |
-| `packages/types`           | The contract the API and all three apps compile against.                                |
-| `packages/ui`              | The design system as React: the date strip, the city tab, zone tags, status screens.    |
-| `one-accord-design-system` | Tokens, logos and `BRAND.md`. The source of truth for how anything looks.               |
-| `scripts/e2e.sh`           | A walk through the whole flow against a running API, from the flyer to the export.      |
-| `Dockerfile`               | One image: the API and the three built apps it serves. What Railway runs.               |
-| `.github/workflows`        | CI on every pull request, deploys from `staging` and `production`.                      |
+| Path                | What it is                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `apps/api`          | NestJS API, Prisma, BullMQ, the Socket.IO gateway. Every endpoint in the PRD.      |
+| `packages/types`    | The contract. This repo owns it; the apps repo keeps a synced copy.                |
+| `scripts/e2e.sh`    | A walk through the whole flow against a running API, from the flyer to the export. |
+| `Dockerfile`        | What Railway runs.                                                                 |
+| `.github/workflows` | CI on every pull request, deploys from `staging` and `production`.                 |
 
 ## Running it
 
@@ -32,11 +30,10 @@ docker compose up -d --wait          # Postgres on 55433, Redis on 6379
 cp .env.example apps/api/.env
 pnpm db:migrate                      # create the schema
 pnpm db:seed                         # a pilot-sized Upper Room Lagos
-pnpm dev                             # API on 3000, apps on 5173/5174/5175
+pnpm dev                             # API on 3000
 ```
 
-Each app proxies `/api` and `/socket.io` to the API, so nothing is
-cross-origin in development either.
+The apps repo proxies `/api` to this while you work.
 
 | App       | Address                        | Who signs in                                                   |
 | --------- | ------------------------------ | -------------------------------------------------------------- |
@@ -104,12 +101,12 @@ offers the ones with seats left, but there is no waitlist.
 
 Run against Postgres 16 and Redis 7 on a real database, not mocks.
 
-| Check            | Result                                                                 |
-| ---------------- | ---------------------------------------------------------------------- |
-| `pnpm typecheck` | Clean across all six packages.                                         |
-| `pnpm build`     | All four apps build, and the Dockerfile builds the lot into one image. |
-| `pnpm test`      | 33 unit tests: token windows, forgery, expiry, pass-code alphabet.     |
-| `pnpm test:e2e`  | 42 assertions through the whole flow, against one origin.              |
+| Check            | Result                                                                           |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `pnpm typecheck` | Clean across all six packages.                                                   |
+| `pnpm build`     | All four apps build, and the Dockerfile builds the lot into one image.           |
+| `pnpm test`      | 33 unit tests: token windows, forgery, expiry, pass-code alphabet.               |
+| `pnpm test:e2e`  | 42 assertions through the whole flow, over bearer tokens with no cookies at all. |
 
 The end-to-end run covers registering, the pass email, the device cookie, the
 rotating code, a double scan, an expired code, a forged code, check-in by name,
@@ -144,29 +141,27 @@ These are real gaps, not polish.
 6. **Agree the targets** in the PRD's measurement table with the Upper Room team.
    They are proposals.
 
-## One origin
+## Sessions across two sites
 
-In production a single process serves everything:
+The apps are served from somewhere else, so every call they make here is
+cross-site and the browser withholds cookies — Safari refuses them outright.
+Check-in cannot depend on a cookie arriving.
 
-```
-/            the attendee app
-/team        delegates and ushers
-/admin       setup and the live dashboard
-/api/*       the API
-/health      what Railway and the load balancer read
-```
+So every session is issued twice: as an `httpOnly` cookie, and as a bearer
+token the app holds and sends in an `Authorization` header.
 
-That is not just tidiness. Check-in hinges on a cookie the API sets when an
-attendee opens their UR Pass email being sent back when they later scan the
-delegate's rotating code. On one origin that cookie is `SameSite=Lax` and
-simply works: no CORS allowance, no `COOKIE_DOMAIN`, nothing to misconfigure in
-a car park on the day. `PUBLIC_URL` is the only address to set.
+|          |                                                                                                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attendee | `GET /api/passes/:code/view` returns a `deviceToken` with the pass. Opening the UR Pass is still what makes a phone recognise its owner at check-in. |
+| Team     | The sign-in link redirects with the session in the **URL fragment**, which never reaches a server and so never lands in a log or a referrer.         |
 
-Run that arrangement locally with `pnpm build`, then:
+The cookie is still set and still read first wherever it works. Put the apps and
+this API on one registrable domain, set `COOKIE_DOMAIN`, and the cookie quietly
+takes over again with no code change.
 
-```bash
-SERVE_APPS=true PUBLIC_URL=http://127.0.0.1:3000 node apps/api/dist/main.js
-```
+The cost, plainly: `localStorage` is readable by JavaScript and an `httpOnly`
+cookie is not, so cross-site scripting now reaches a session. Team sessions last
+12 hours and a pass token can only ever check in its own holder.
 
 ## Branches and deploys
 
@@ -176,8 +171,8 @@ and the **Promote** workflow opens the promotion PRs. The whole arrangement,
 including how to wire up a Railway environment, is in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Give the service `DATABASE_URL`, `REDIS_URL`, `APP_SECRET`, `PUBLIC_URL` and the
-mail settings. The container runs `prisma migrate deploy` as it starts, so
+Give the service `DATABASE_URL`, `REDIS_URL`, `APP_SECRET`, the three app
+addresses (`WEB_URL`, `TEAM_URL`, `ADMIN_URL`) and the mail settings. The container runs `prisma migrate deploy` as it starts, so
 merging a migration is what applies it.
 
 Run more than one instance freely: the Socket.IO Redis adapter means a check-in

@@ -105,6 +105,11 @@ export interface PassView {
   delegateFirstName: string | null;
   whatsappUrl: string | null;
   checkedIn: { boarded: boolean; arrived: boolean };
+  /**
+   * PS-2: what this phone keeps so it is recognised at check-in. Also set as
+   * a cookie; the app only needs this when the API is on another site.
+   */
+  deviceToken: string;
 }
 
 export type ScanKind = 'BOARDING' | 'GATE';
@@ -183,6 +188,12 @@ export interface BreakdownRow {
   registered: number;
   boarded: number;
   arrived: number;
+}
+
+/** What the sign-in link hands back, for apps on another site. */
+export interface TeamAuthResult {
+  token: string;
+  session: TeamSession;
 }
 
 export interface TeamSession {

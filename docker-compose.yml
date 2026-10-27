@@ -1,4 +1,6 @@
-# Postgres and Redis for local work. Production uses managed versions of both.
+# Postgres for local work. Production uses a managed one.
+# There is no Redis: the mail queue lives in Postgres and Socket.IO uses
+# LISTEN/NOTIFY to reach clients on other instances.
 services:
   postgres:
     image: postgres:16-alpine
@@ -14,16 +16,6 @@ services:
       - oneaccord-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - '6379:6379'
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10

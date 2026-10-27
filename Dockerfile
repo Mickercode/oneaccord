@@ -1,4 +1,4 @@
-# One Accord, as one image: the API and the three apps it serves.
+# The One Accord API.
 #
 # Debian slim rather than Alpine: Prisma's query engine wants glibc and
 # OpenSSL, and musl builds are a recurring source of surprises on a day when
@@ -19,29 +19,19 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
-COPY apps/web/package.json ./apps/web/
-COPY apps/team/package.json ./apps/team/
-COPY apps/admin/package.json ./apps/admin/
 COPY packages/types/package.json ./packages/types/
-COPY packages/ui/package.json ./packages/ui/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts
 
 # ---- build ------------------------------------------------------------------
 FROM deps AS build
 COPY tsconfig.base.json turbo.json ./
-COPY one-accord-design-system ./one-accord-design-system
 COPY packages ./packages
 COPY apps ./apps
-# The apps call /api on their own origin, so nothing about the deploy address
-# is baked into them at build time.
 RUN pnpm --filter @oa/types run build \
-  && pnpm --filter @oa/api run build \
-  && pnpm --filter @oa/web run build \
-  && pnpm --filter @oa/team run build \
-  && pnpm --filter @oa/admin run build
+  && pnpm --filter @oa/api run build
 
 # ---- production dependencies ------------------------------------------------
-# Only what the API needs at runtime. The apps are plain files by now.
+# Only what the API needs at runtime.
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
@@ -66,11 +56,6 @@ COPY packages/types/package.json ./packages/types/
 
 COPY --from=build /app/packages/types/dist ./packages/types/dist
 COPY --from=build /app/apps/api/dist ./apps/api/dist
-
-# The three apps, served from this same process at /, /team and /admin.
-COPY --from=build /app/apps/web/dist ./apps/web/dist
-COPY --from=build /app/apps/team/dist ./apps/team/dist
-COPY --from=build /app/apps/admin/dist ./apps/admin/dist
 
 # The schema and migrations travel with the image: the container runs
 # `prisma migrate deploy` on the way up.

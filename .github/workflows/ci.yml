@@ -41,7 +41,7 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - name: Build everything
+      - name: Build
         run: pnpm build
 
   e2e:
@@ -62,27 +62,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
 
     env:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/oneaccord
-      REDIS_URL: redis://localhost:6379
       # Only ever signs tokens inside this job. The real one lives in Railway.
       APP_SECRET: ci-secret-not-used-anywhere-real
       API_URL: http://127.0.0.1:3000/api
       WEB_URL: http://localhost:5173
       TEAM_URL: http://localhost:5174
       ADMIN_URL: http://localhost:5175
-      # The walk only talks to the API; Vite serves the apps in development.
-      SERVE_APPS: 'false'
       MAIL_PROVIDER: console
       API_LOG: ${{ github.workspace }}/api.log
 
@@ -98,8 +87,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build the API
-        run: pnpm --filter @oa/types run build && pnpm --filter @oa/api run build
+      - name: Build
+        run: pnpm build
 
       - name: Migrate and seed
         run: |
