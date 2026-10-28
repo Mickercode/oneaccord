@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { CheckInResult, ScanContext } from '@oa/types';
-import { CookiesService } from '../common/cookies.service';
+import { SessionsService } from '../common/sessions.service';
 import { Roles, Team, TeamGuard, type TeamPrincipal } from '../common/team.guard';
 import { CheckInsService } from './checkins.service';
 import { ByNameDto, ScanDto, WalkInDto } from './checkins.dto';
@@ -13,28 +13,28 @@ import { ByNameDto, ScanDto, WalkInDto } from './checkins.dto';
 export class CheckInsController {
   constructor(
     private readonly checkIns: CheckInsService,
-    private readonly cookies: CookiesService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /** What the scanned page shows before the attendee taps. */
   @Get('context')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   context(@Query('token') token: string, @Req() req: Request): Promise<ScanContext> {
-    return this.checkIns.context(token, this.cookies.readPass(req));
+    return this.checkIns.context(token, this.sessions.readPass(req));
   }
 
   /** BD-2: the one tap on the bus. */
   @Post('boarding')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   boarding(@Body() dto: ScanDto, @Req() req: Request): Promise<CheckInResult> {
-    return this.checkIns.boarding(dto, this.cookies.readPass(req));
+    return this.checkIns.boarding(dto, this.sessions.readPass(req));
   }
 
   /** GT-2: the poster in the security queue. */
   @Post('gate')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   gate(@Body() dto: ScanDto, @Req() req: Request): Promise<CheckInResult> {
-    return this.checkIns.gate(dto, this.cookies.readPass(req));
+    return this.checkIns.gate(dto, this.sessions.readPass(req));
   }
 
   /** GT-4: register and check in at once. */

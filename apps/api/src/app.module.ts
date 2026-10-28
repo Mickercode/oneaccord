@@ -15,7 +15,6 @@ import { MessagesModule } from './messages/messages.module';
 import { ExportModule } from './export/export.module';
 import { HealthController } from './health.controller';
 import { ApiFallbackModule } from './api-fallback.controller';
-import { StaticModule } from './static.module';
 
 @Module({
   imports: [
@@ -34,11 +33,8 @@ import { StaticModule } from './static.module';
     TripsModule,
     MessagesModule,
     ExportModule,
-    // After every real API route, so it only catches what is left over,
-    // and before the apps, so /api never reaches their index.html.
+    // After every real API route, so it only catches what is left over.
     ApiFallbackModule,
-    // Last, so the apps never shadow an API route.
-    StaticModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

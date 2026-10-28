@@ -1,9 +1,8 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
-import type Redis from 'ioredis';
 import { PrismaService } from './common/prisma.service';
-import { REDIS } from './common/common.module';
+import { MailService } from './mail/mail.service';
 
 @ApiTags('health')
 @Controller('health')
@@ -11,21 +10,23 @@ import { REDIS } from './common/common.module';
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly mail: MailService,
   ) {}
 
   /** What the status page and the load balancer read. */
   @Get()
   async health() {
-    const [database, cache] = await Promise.allSettled([
+    const [database, outbox] = await Promise.allSettled([
       this.prisma.$queryRaw`SELECT 1`,
-      this.redis.ping(),
+      this.mail.pending(),
     ]);
-    const ok = database.status === 'fulfilled' && cache.status === 'fulfilled';
+    const ok = database.status === 'fulfilled';
     return {
       ok,
       database: database.status === 'fulfilled' ? 'up' : 'down',
-      redis: cache.status === 'fulfilled' ? 'up' : 'down',
+      // Mail waiting to go out. A number that climbs and never falls means
+      // the provider is refusing and the passes are not arriving.
+      mailWaiting: outbox.status === 'fulfilled' ? outbox.value : null,
       at: new Date().toISOString(),
     };
   }
