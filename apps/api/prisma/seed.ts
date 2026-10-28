@@ -4,6 +4,7 @@
  */
 import 'dotenv/config';
 import { PrismaClient, type PickupKind } from '@prisma/client';
+import { hashPassword } from '../src/common/password';
 import { randomInt } from 'node:crypto';
 
 const prisma = new PrismaClient();
@@ -69,6 +70,24 @@ function person(index: number): { fullName: string; email: string } {
   };
 }
 
+/**
+ * The standing accounts' passwords come from the environment, never from this
+ * file: it lives in a public repository, and a password committed to one is a
+ * password everybody has. Set them where the secrets already are — Render's
+ * environment for a deployed database, apps/api/.env for a local one.
+ *
+ * With none set, the accounts are still created and simply have no password,
+ * so they sign in by magic link until somebody sets one.
+ */
+async function standingPassword(variable: string): Promise<string | null> {
+  const value = process.env[variable];
+  if (!value) return null;
+  if (value.length < 8) {
+    throw new Error(`${variable} is too short: use at least 8 characters.`);
+  }
+  return hashPassword(value);
+}
+
 async function main(): Promise<void> {
   const startsAt = nextSaturdayAt(17);
 
@@ -101,22 +120,49 @@ async function main(): Promise<void> {
   );
   const zoneByLetter = Object.fromEntries(zones.map((zone) => [zone.letter, zone]));
 
+  // The two standing accounts. Everyone else is invited by an admin and signs
+  // in by magic link until they set a password of their own.
+  const adminPassword = await standingPassword('SEED_ADMIN_PASSWORD');
   const admin = await prisma.teamMember.upsert({
-    where: { email: 'admin@oneaccord.example' },
-    update: {},
-    create: { email: 'admin@oneaccord.example', fullName: 'Grace Adeniyi', role: 'SUPER_ADMIN' },
+    where: { email: 'admin@oneaccord.com' },
+    update: adminPassword ? { passwordHash: adminPassword } : {},
+    create: {
+      email: 'admin@oneaccord.com',
+      fullName: 'One Accord Admin',
+      role: 'SUPER_ADMIN',
+      passwordHash: adminPassword,
+    },
   });
 
   const gate = await prisma.gate.create({ data: { eventId: event.id, name: 'Main gate' } });
 
+  // An ordinary invited usher, to show what a member without a password looks
+  // like: they sign in by magic link and can set one afterwards.
   const usher = await prisma.teamMember.upsert({
     where: { email: 'usher@oneaccord.example' },
     update: {},
     create: { email: 'usher@oneaccord.example', fullName: 'Samuel Okon', role: 'USHER' },
   });
 
+  // One standing team account that can work every screen in the team app: the
+  // gate, the hall, look-up, and a trip's boarding code.
+  const teamPassword = await standingPassword('SEED_TEAM_PASSWORD');
+  const team = await prisma.teamMember.upsert({
+    where: { email: 'team@oneaccord.com' },
+    update: teamPassword ? { passwordHash: teamPassword } : {},
+    create: {
+      email: 'team@oneaccord.com',
+      fullName: 'One Accord Team',
+      role: 'ADMIN',
+      passwordHash: teamPassword,
+    },
+  });
+
   await prisma.assignment.create({
     data: { teamMemberId: admin.id, eventId: event.id },
+  });
+  await prisma.assignment.create({
+    data: { teamMemberId: team.id, eventId: event.id, gateId: gate.id },
   });
   await prisma.assignment.create({
     data: { teamMemberId: usher.id, eventId: event.id, gateId: gate.id },
@@ -302,10 +348,15 @@ Upper Room ${event.city} seeded.
   Trips        ${trips.map((trip) => trip.code).join(', ')}
   Gate poster  ${gate.name} (${gate.id})
 
-Sign in (magic links print to the API log when MAIL_PROVIDER=console):
-  Admin     admin@oneaccord.example
-  Delegate  tolu@oneaccord.example
-  Usher     usher@oneaccord.example
+Standing accounts:
+  Admin   admin@oneaccord.com   the dashboard${admin.passwordHash ? ' (password set)' : ' (no password; use a magic link)'}
+  Team    team@oneaccord.com    the team app${team.passwordHash ? ' (password set)' : ' (no password; use a magic link)'}
+
+Set SEED_ADMIN_PASSWORD and SEED_TEAM_PASSWORD to give them passwords.
+
+Invited members sign in by magic link, which prints to this log while
+MAIL_PROVIDER=console, then set a password of their own:
+  usher@oneaccord.example  tolu@oneaccord.example  chidi@oneaccord.example
 
 A pass to try: ${sample?.passCode} (${sample?.fullName})
 `);
