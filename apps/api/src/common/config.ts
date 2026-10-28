@@ -20,6 +20,10 @@ export interface AppConfig {
   };
 }
 
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (!value) throw new Error(`Missing environment variable ${name}`);
@@ -32,11 +36,16 @@ export function loadConfig(): AppConfig {
   const port = Number(process.env.PORT ?? 3000);
 
   /**
-   * The three apps deploy on their own, each at the root of its own address,
-   * so each one is named here. They are used for the sign-in redirect, the
-   * links in emails, and the CORS allowlist.
+   * The three apps ship as one deployment: the attendee app at the root, the
+   * team app at /team, the dashboard at /admin. So WEB_URL is the only address
+   * worth setting and the other two fall out of it. Either can still be set
+   * on its own if they are ever split apart again.
+   *
+   * In development each app has its own Vite port.
    */
-  const appUrl = (devPort: number) => (dev ? `http://localhost:${devPort}` : undefined);
+  const appsUrl = process.env.WEB_URL?.replace(/\/$/, '');
+  const appUrl = (path: string, devPort: number) =>
+    appsUrl ? `${appsUrl}${path}` : dev ? `http://localhost:${devPort}` : undefined;
 
   return {
     port,
@@ -47,9 +56,11 @@ export function loadConfig(): AppConfig {
     ),
     secret: required('APP_SECRET', dev ? 'dev-secret-change-me-before-any-real-event' : undefined),
     apiUrl: required('API_URL', dev ? `http://localhost:${port}/api` : undefined),
-    webUrl: required('WEB_URL', appUrl(5173)),
-    teamUrl: required('TEAM_URL', appUrl(5174)),
-    adminUrl: required('ADMIN_URL', appUrl(5175)),
+    // Trailing slashes are easy to paste in and would turn a sign-in
+    // redirect into https://host//#t=, so take them off once here.
+    webUrl: trimSlash(required('WEB_URL', appUrl('', 5173))),
+    teamUrl: trimSlash(required('TEAM_URL', appUrl('/team', 5174))),
+    adminUrl: trimSlash(required('ADMIN_URL', appUrl('/admin', 5175))),
     cookieDomain: process.env.COOKIE_DOMAIN,
     mail: {
       provider: (process.env.MAIL_PROVIDER as AppConfig['mail']['provider']) ?? 'console',
