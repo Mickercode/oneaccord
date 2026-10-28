@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,9 +12,9 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
-import { IsEmail } from 'class-validator';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 import type { Request, Response } from 'express';
-import type { TeamSession } from '@oa/types';
+import type { TeamAuthResult, TeamSession } from '@oa/types';
 import { SessionsService } from '../common/sessions.service';
 import { Team, TeamGuard, type TeamPrincipal } from '../common/team.guard';
 import { AuthService } from './auth.service';
@@ -21,6 +22,22 @@ import { AuthService } from './auth.service';
 class MagicLinkDto {
   @IsEmail()
   email: string;
+}
+
+class SignInDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MaxLength(200)
+  password: string;
+}
+
+class SetPasswordDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  password: string;
 }
 
 @ApiTags('auth')
@@ -36,6 +53,43 @@ export class AuthController {
   async magicLink(@Body() dto: MagicLinkDto) {
     await this.auth.sendMagicLink(dto.email);
     return { sent: true };
+  }
+
+  /**
+   * The standing accounts sign in here. Throttled hard: this is the one
+   * endpoint where guessing gets you somewhere, and the limit is per address
+   * as well as per caller so one account cannot be ground down from many IPs.
+   */
+  @Post('sign-in')
+  @Throttle({ default: { limit: 10, ttl: 300_000 } })
+  async signIn(
+    @Body() dto: SignInDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<TeamAuthResult> {
+    const signedIn = await this.auth.signInWithPassword(dto.email, dto.password);
+    if (!signedIn) {
+      throw new UnauthorizedException('That email and password do not match.');
+    }
+
+    // Sets the cookie and hands back the same session as a bearer token, so
+    // the app works whether or not it shares a site with this API.
+    const token = this.sessions.setTeam(res, {
+      sub: signedIn.memberId,
+      role: signedIn.role,
+    });
+    const session = await this.auth.session(signedIn.memberId);
+    if (!session) throw new UnauthorizedException('Please sign in again.');
+
+    return { token, session };
+  }
+
+  /** Set or change your own password. Invited members use this once. */
+  @Post('password')
+  @UseGuards(TeamGuard)
+  async setPassword(@Body() dto: SetPasswordDto, @Team() team: TeamPrincipal) {
+    const problem = await this.auth.setPassword(team.id, dto.password);
+    if (problem) throw new BadRequestException(problem);
+    return { set: true };
   }
 
   @Get('callback')

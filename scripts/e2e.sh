@@ -73,6 +73,13 @@ sign_in() { # email -> prints the bearer token
   esac
 }
 
+# The standing accounts sign in with a password and get the same session.
+sign_in_with_password() { # email password -> prints the bearer token
+  local resp
+  resp=$(curl -s -X POST $API/auth/sign-in -H 'content-type: application/json'     -d "{\"email\":\"$1\",\"password\":\"$2\"}")
+  printf '%s' "$(echo "$resp" | j token)"
+}
+
 # Every authenticated call goes through here, bearer only.
 as() { # token  then curl args
   local token="$1"; shift
@@ -189,7 +196,13 @@ ARRIVED=$(echo "$arr" | j arrived)
 check "whole trip marked arrived" "$((BEFORE+2))" "$ARRIVED"
 
 echo "== 15. The admin signs in =="
-ADMIN=$(sign_in admin@oneaccord.example)
+# The admin is a standing account now, so it signs in with a password when one
+# is set. Magic links are still covered above, by the delegate and the usher.
+if [ -n "${SEED_ADMIN_PASSWORD:-}" ]; then
+  ADMIN=$(sign_in_with_password admin@oneaccord.com "$SEED_ADMIN_PASSWORD")
+else
+  ADMIN=$(sign_in admin@oneaccord.com)
+fi
 check "signed in as admin" "SUPER_ADMIN" "$(as "$ADMIN" $API/auth/me | j role)"
 
 # Move the doors about, so this run does not depend on what an earlier one left.
@@ -250,7 +263,27 @@ check "admin export has a header row" "yes" "$header_ok"
 check "export has a row per attendee" "yes" "$([ "$(echo "$admincsv" | wc -l)" -gt 380 ] && echo yes || echo no)"
 check "export records the boarded trip" "yes" "$(echo "$admincsv" | grep -q "$PASS_CODE" && echo yes || echo no)"
 
-echo "== 19. An attendee has their details removed (privacy) =="
+echo "== 19. The standing accounts sign in with a password =="
+wrong=$(curl -s -X POST $API/auth/sign-in -H 'content-type: application/json'   -d '{"email":"admin@oneaccord.com","password":"not-the-password"}')
+check "a wrong password is refused" "401" "$(echo "$wrong" | j statusCode)"
+check "and says nothing useful" "That email and password do not match." "$(echo "$wrong" | j message)"
+
+unknown=$(curl -s -X POST $API/auth/sign-in -H 'content-type: application/json'   -d '{"email":"nobody@oneaccord.com","password":"whatever12345"}')
+check "an unknown address looks the same" "That email and password do not match." "$(echo "$unknown" | j message)"
+
+if [ -n "${SEED_ADMIN_PASSWORD:-}" ]; then
+  PW_ADMIN=$(sign_in_with_password admin@oneaccord.com "$SEED_ADMIN_PASSWORD")
+  check "the admin signs in with a password" "SUPER_ADMIN" "$(as "$PW_ADMIN" $API/auth/me | j role)"
+  check "and that session works" "yes" "$([ -n "$(as "$PW_ADMIN" $API/events/$EVENT_ID/live | j totals.registered)" ] && echo yes || echo no)"
+fi
+
+if [ -n "${SEED_TEAM_PASSWORD:-}" ]; then
+  PW_TEAM=$(sign_in_with_password team@oneaccord.com "$SEED_TEAM_PASSWORD")
+  check "the team account signs in" "ADMIN" "$(as "$PW_TEAM" $API/auth/me | j role)"
+  check "and can work the gate" "yes" "$([ -n "$(as "$PW_TEAM" $API/events/$EVENT_ID/gates | j 0.id)" ] && echo yes || echo no)"
+fi
+
+echo "== 20. An attendee has their details removed (privacy) =="
 wrong=$(curl -s -X POST $API/passes/$PRIV_CODE/forget -H 'content-type: application/json' -d '{"email":"someone.else@example.com"}')
 check "wrong email refused" "404" "$(echo "$wrong" | j statusCode)"
 gone=$(curl -s -X POST $API/passes/$PRIV_CODE/forget -H 'content-type: application/json' -d "{\"email\":\"private+$$@example.com\"}")
