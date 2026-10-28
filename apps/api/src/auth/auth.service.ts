@@ -5,6 +5,7 @@ import { PrismaService } from '../common/prisma.service';
 import { TokensService } from '../common/tokens.service';
 import { MailService } from '../mail/mail.service';
 import { magicLinkEmail } from '../mail/templates';
+import { describePasswordProblem, hashPassword, verifyPassword } from '../common/password';
 
 const LINK_MINUTES = 20;
 
@@ -56,6 +57,50 @@ export class AuthService {
         minutes: LINK_MINUTES,
       }),
     );
+  }
+
+  /**
+   * EV-5 keeps the magic link for people who were invited. This is the other
+   * way in, for the standing accounts that sign in every event.
+   *
+   * The same answer whether the address is unknown, the member is inactive or
+   * the password is simply wrong: anything else lets someone work out which
+   * addresses are team accounts.
+   */
+  async signInWithPassword(
+    rawEmail: string,
+    password: string,
+  ): Promise<{ memberId: string; role: string } | null> {
+    const email = rawEmail.trim().toLowerCase();
+    const member = await this.prisma.teamMember.findUnique({ where: { email } });
+
+    if (!member || !member.active || !member.passwordHash) {
+      // Still spend the time hashing, so a missing account does not answer
+      // noticeably faster than a wrong password.
+      await verifyPassword(password, null);
+      this.logger.warn('A sign-in was refused.');
+      return null;
+    }
+
+    if (!(await verifyPassword(password, member.passwordHash))) {
+      this.logger.warn(`A sign-in was refused for ${member.email}.`);
+      return null;
+    }
+
+    return { memberId: member.id, role: member.role };
+  }
+
+  /** Anyone signed in can set or change their own password. */
+  async setPassword(memberId: string, password: string): Promise<string | null> {
+    const problem = describePasswordProblem(password);
+    if (problem) return problem;
+
+    await this.prisma.teamMember.update({
+      where: { id: memberId },
+      data: { passwordHash: await hashPassword(password) },
+    });
+    this.logger.log('A team member set their password.');
+    return null;
   }
 
   /** One use only, and only inside its twenty minutes. */

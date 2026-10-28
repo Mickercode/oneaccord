@@ -73,6 +73,10 @@ jobs:
       TEAM_URL: http://localhost:5174
       ADMIN_URL: http://localhost:5175
       MAIL_PROVIDER: console
+      # Only ever used inside this job, so the walk can exercise the
+      # password sign-in routes as well as the magic links.
+      SEED_ADMIN_PASSWORD: ci-admin-password
+      SEED_TEAM_PASSWORD: ci-team-password
       API_LOG: ${{ github.workspace }}/api.log
 
     steps:
