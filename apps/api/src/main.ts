@@ -30,10 +30,24 @@ async function bootstrap(): Promise<void> {
   );
   app.set('trust proxy', 1);
 
-  app.enableCors({
-    origin: [config.webUrl, config.teamUrl, config.adminUrl],
-    credentials: true,
-  });
+  // An allowed origin is scheme, host and port — never a path. The team and
+  // dashboard addresses carry one (/team, /admin) because the three apps ship
+  // as a single deployment, so reduce them before handing them to CORS, or
+  // every entry silently fails to match.
+  const allowedOrigins = [
+    ...new Set(
+      [config.webUrl, config.teamUrl, config.adminUrl].map((address) => {
+        try {
+          return new URL(address).origin;
+        } catch {
+          return address;
+        }
+      }),
+    ),
+  ];
+
+  app.enableCors({ origin: allowedOrigins, credentials: true });
+  new Logger('One Accord').log(`Allowing requests from ${allowedOrigins.join(', ')}.`);
 
   app.useGlobalPipes(
     new ValidationPipe({
