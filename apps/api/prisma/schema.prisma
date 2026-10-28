@@ -243,12 +243,16 @@ model CheckIn {
 }
 
 model TeamMember {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  fullName  String
-  role      TeamRole
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id       String   @id @default(cuid())
+  email    String   @unique
+  fullName String
+  role     TeamRole
+  active   Boolean  @default(true)
+  /// Set for accounts that sign in with a password. Invited members start
+  /// without one and use a magic link until they choose one, so an invite
+  /// never has to carry a password to anybody.
+  passwordHash String?
+  createdAt    DateTime @default(now())
 
   assignments Assignment[]
   trips       Trip[]
